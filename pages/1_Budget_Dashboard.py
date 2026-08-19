@@ -1,6 +1,7 @@
 import streamlit as st
 from src.calculations import calculate_savings_rate
 from src.visualizations import create_budget_pie_chart
+from src.database import update_budget_profile
 
 st.set_page_config(
     page_title="Budget Planner",
@@ -40,7 +41,7 @@ with col2:
 with col3:
     st.metric(
         "Savings Rate",
-        f"${savings_rate:.1%}"
+        f"{savings_rate:.1%}"
     )
 
 with col4:
@@ -66,8 +67,24 @@ if total_expenses>0:
     fig = create_budget_pie_chart(expenses)
     st.pyplot(fig)
 
+if "financial_profile" not in st.session_state:
+    st.session_state.financial_profile = {}
 
-st.session_state["monthly_income"] = monthly_income
-st.session_state["total_expenses"] = total_expenses
-st.session_state["remaining_balance"] = remaining_balance
-st.session_state["savings_rate"] = savings_rate
+profile_id = st.session_state.get("profile_id")
+if not isinstance(profile_id, int):
+    st.error("Select or create a financial profile from the Home page first.")
+    st.stop()
+
+profile = st.session_state.financial_profile
+profile["monthly_income"] = monthly_income
+profile["total_expenses"] = total_expenses
+profile["remaining_balance"] = remaining_balance
+profile["savings_rate"] = savings_rate
+
+if st.button("Save Budget"):
+    rows_updated = update_budget_profile(profile_id, monthly_income, total_expenses)
+
+    if rows_updated == 1:
+        st.success("Budget information saved.")
+    else:
+        st.error("Budget information could not be saved.")
