@@ -1,6 +1,8 @@
+
 import streamlit as st
+from datetime import date
 from src.calculations import debt_information
-from src.database import insert_debt, get_depts_by_profile
+from src.database import insert_debt, get_depts_by_profile, delete_debt, update_debt, record_debt_payment
 
 
 st.set_page_config(
@@ -216,4 +218,83 @@ if not debts:
     st.info("No debts have been saved yet for that Profile ID")
 else:
     for debt in debts:
-        st.write(f"Debt: {debt['debt_name']}, Dept Balance: {debt['debt_balance']:,.2f}")
+        col1, col2, col3, col4 = st.columns([5,2,2,2])
+
+        with col1:
+            st.write(f"Debt: {debt['debt_name']}, Debt Balance: ${debt['debt_balance']:,.2f}")
+        with col2:
+            if st.button("Delete Debt", key=f"delete_debt_{debt['id']}"):
+                num_rows_deleted = delete_debt(profile_id, debt['id'])
+                if num_rows_deleted == 1:
+                    st.write(f"Debt with id {debt['id']} has been deleted successfully")
+                    st.rerun()
+                else:
+                    st.error("The debt couldn't be found or deleted")
+        with col3:
+            if st.button("Edit Debt", key=f"edit_debt_{debt['id']}"):
+                st.session_state.editing_debt_id = debt['id']
+        with col4:
+            if st.button("Record Payment", key=f"record_payment{debt['id']}"):
+                st.session_state.payment_debt_id = debt['id']
+
+        if st.session_state.get("editing_debt_id") == debt["id"]:
+            editing_debt_type = debt["debt_type"]
+            editing_debt_name = st.text_input("Enter new debt name", value=debt["debt_name"], key=f"editing_debt_name_{debt['id']}")
+            editing_debt_balance = st.number_input("Enter new debt balance", min_value=0.0,value=float(debt["debt_balance"] or 0), key=f"editing_debt_balance_{debt['id']}")
+            editing_annual_interest_rate = st.number_input("Enter new interest rate", min_value=0.0, max_value=100.0,value=float(debt["annual_interest_rate"] or 0), key=f"editing_annual_interest_rate_{debt['id']}")
+            editing_monthly_payment = st.number_input("Enter new monthly payment", min_value=0.0,value=float(debt["monthly_payment"] or 0), key=f"editing_monthly_payment_{debt['id']}")
+            editing_monthly_interest_rate = editing_annual_interest_rate / 100 / 12
+
+            editing_credit_limit = None
+            editing_minimum_payment = None
+            editing_vehicle_value = None
+            editing_remaining_term_months = None
+            editing_property_value = None
+            editing_remaining_amortization_years = None
+            editing_repayment_plan = None
+            editing_description = None
+
+            if editing_debt_type == "Credit Card":
+                editing_credit_limit = float(st.number_input("Enter new Credit Limit", min_value=1.0, step=100.0, value=float(debt["credit_limit"] or 1), key=f"editing_credit_limit_{debt['id']}"))
+                editing_minimum_payment = float(st.number_input("Enter new minimum payment", min_value=0.0, step=10.0, value=float(debt["minimum_payment"] or 0), key=f"editing_minimum_payment_{debt['id']}"))
+                editing_credit_utilization = (editing_debt_balance / editing_credit_limit * 100)
+            elif editing_debt_type == "Car Loan":
+                editing_vehicle_value = float(st.number_input("Enter new vehicle value", min_value=0.0, step=100.0, value = float(debt["vehicle_value"] or 0), key=f"editing_vehicle_value_{debt['id']}"))
+                editing_remaining_term_months = int(st.number_input("Enter new remaining term months", min_value=1, step=1, value=int(debt["remaining_term_months"] or 1), key=f"editing_remaining_term_months_{debt['id']}"))
+            elif editing_debt_type == "Mortgage":
+                editing_property_value = float(st.number_input("Enter new estimated property value", min_value=0.0, step=1000.0, value=float(debt["property_value"] or 0.0), key=f"editing_property_value_{debt['id']}"))
+                editing_remaining_amortization_years = int(st.number_input("Enter new remaining amortization in years", min_value=1, step=1, value=int(debt["remaining_amortization_years"] or 1), key=f"editing_remaining_amortization_years_{debt['id']}"))
+            elif editing_debt_type == "Student Loan":
+                repayment_options = ["Standard", "Extended", "Income-Based", "Interest-Free", "Other"]
+                editing_repayment_plan = st.selectbox("Enter new repayment plan", repayment_options, index=repayment_options.index(debt["repayment_plan"] or "Standard"), key=f"editing_repayment_plan_{debt['id']}")
+                if editing_repayment_plan == "Interest-Free":
+                    editing_annual_interest_rate = 0.0
+                    editing_monthly_interest_rate = (editing_annual_interest_rate / 100 / 12)
+                    editing_monthly_interest_amount = (editing_monthly_interest_rate * editing_debt_balance)
+            elif editing_debt_type == "Other":
+                editing_description = st.text_input("Enter a new description here", value=debt["description"] or "", key=f"editing_description_{debt['id']}")
+
+            if st.button("Save Changes", key=f"save_debt_{debt['id']}"):
+                num_rows_updated = update_debt(profile_id, debt["id"], editing_debt_type, editing_debt_name, editing_debt_balance, editing_annual_interest_rate, editing_monthly_payment, editing_credit_limit, editing_minimum_payment, editing_vehicle_value, editing_remaining_term_months, editing_property_value, editing_remaining_amortization_years, editing_repayment_plan, editing_description)
+                if num_rows_updated == 1:
+                    st.success("Debt updated successfully.")
+                    st.session_state.editing_debt_id = None
+                    st.rerun()
+                else:
+                    st.error("Something went wrong. The debt could not be updated.")
+
+        if st.session_state.get("payment_debt_id") == debt['id']:
+            payment_amount = st.number_input("Enter the amount you'll like to pay", min_value=0.01, max_value=float(debt['debt_balance']), key=f"payment_amount_{debt['id']}")
+            payment_date = st.date_input("Enter the payment date", value=date.today(), key=f"payment_date_{debt['id']}" )
+
+            if st.button("Submit Payment", key=f"submit_payment_{debt['id']}"):
+                payment_date_string = payment_date.isoformat()
+
+                rows_updated = record_debt_payment(profile_id, debt['id'], payment_amount, payment_date_string)
+
+                if rows_updated == 1:
+                    st.write("Debt updated successfully.")
+                    st.session_state.payment_debt_id = None
+                    st.rerun()
+                else:
+                    st.error("Payment not accepted")

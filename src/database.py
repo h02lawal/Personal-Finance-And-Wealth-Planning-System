@@ -154,6 +154,27 @@ def create_debts_table():
     conn.commit()
     conn.close()
 
+def delete_debt(profile_id: int, debt_id: int) -> int:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM debts
+            WHERE profile_id = ? AND id = ?
+            
+        """, (profile_id, debt_id))
+        rows_deleted = cursor.rowcount
+        conn.commit()
+        return rows_deleted
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
 def insert_debt(profile_id, debt_name, debt_type, debt_balance, annual_interest_rate, monthly_payment, credit_limit: float|None=None, minimum_payment: float|None=None, vehicle_value: float| None=None, remaining_term_months: int | None=None, property_value: float|None=None, remaining_amortization_years: int|None=None, repayment_plan: str|None=None, description: str|None=None) -> int:
     conn = get_connection()
     try:
@@ -281,5 +302,394 @@ def get_financial_profile(profile_id:int):
         """, (profile_id,)
                        )
         return cursor.fetchone()
+    finally:
+        conn.close()
+
+def update_debt(profile_id:int, debt_id:int, debt_type:str, debt_name:str, debt_balance:float, annual_interest_rate:float, monthly_payment: float, credit_limit:float|None=None, minimum_payment:float|None=None, vehicle_value:float|None=None, remaining_term_months:int|None=None, property_value:float|None=None, remaining_amortization_years: int|None=None, repayment_plan: str|None=None, description: str|None=None) -> int:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        if debt_type == "Credit Card":
+            cursor.execute("""
+            UPDATE debts 
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?,
+            credit_limit = ?,
+            minimum_payment = ?
+            WHERE id = ? AND profile_id = ?
+            """, (debt_name, debt_balance, annual_interest_rate, monthly_payment, credit_limit, minimum_payment, debt_id, profile_id))
+        elif debt_type == "Car Loan":
+            cursor.execute("""
+            UPDATE debts 
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?,
+            vehicle_value = ?,
+            remaining_term_months = ?
+            WHERE id = ? AND profile_id = ?
+            """, (debt_name, debt_balance, annual_interest_rate, monthly_payment, vehicle_value, remaining_term_months, debt_id, profile_id))
+        elif debt_type == "Mortgage":
+            cursor.execute("""
+            UPDATE debts 
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?,
+            property_value = ?,
+            remaining_amortization_years = ?
+            WHERE id = ? AND profile_id = ?
+            """, (debt_name, debt_balance, annual_interest_rate, monthly_payment, property_value, remaining_amortization_years, debt_id, profile_id))
+        elif debt_type == "Student Loan":
+            if repayment_plan == "Interest-Free":
+                annual_interest_rate = 0.0
+
+            cursor.execute("""
+            UPDATE debts 
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?,
+            repayment_plan = ?
+            WHERE id = ? AND profile_id = ?
+            """, (debt_name, debt_balance, annual_interest_rate, monthly_payment, repayment_plan, debt_id, profile_id))
+        elif debt_type == "Personal Loan":
+            cursor.execute("""
+            UPDATE debts
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?
+            WHERE id = ? AND profile_id = ?
+            """,(debt_name, debt_balance, annual_interest_rate, monthly_payment, debt_id, profile_id))
+
+        elif debt_type == "Other":
+            cursor.execute("""
+            UPDATE debts 
+            SET debt_name = ?,
+            debt_balance = ?,
+            annual_interest_rate = ?,
+            monthly_payment = ?,
+            description = ?
+            WHERE id = ? AND profile_id = ?
+            """, (debt_name, debt_balance, annual_interest_rate, monthly_payment, description, debt_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def delete_savings(savings_id, profile_id) -> int:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        DELETE FROM savings 
+        WHERE id = ? AND profile_id = ?
+        """, (savings_id, profile_id))
+
+        rows_deleted = cursor.rowcount
+        conn.commit()
+        return rows_deleted
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+def update_savings(savings_id, profile_id, savings_name, planned_savings, current_savings, monthly_contribution, target_date, timeline) -> int :
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE savings 
+        SET savings_name = ?,
+        planned_savings_amount = ?,
+        current_savings_amount = ?,
+        monthly_contribution = ?,
+        target_date = ?,
+        timeline = ?
+        WHERE id = ? AND profile_id = ?
+        """, (savings_name, planned_savings, current_savings, monthly_contribution, target_date, timeline, savings_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def create_debt_payment_history():
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS debt_payment_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debt_id INTEGER NOT NULL,
+        payment_amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE
+        );
+        """)
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def get_debt_payments(debt_id) -> list:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT *
+        FROM debt_payment_history
+        WHERE debt_id = ?
+        ORDER BY payment_date DESC
+        """, (debt_id,))
+
+        rows = cursor.fetchall()
+        conn.commit()
+        return rows
+    finally:
+        conn.close()
+
+def get_total_debt_payments(debt_id) -> int:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT COALESCE(SUM(payment_amount), 0)
+        FROM debt_payment_history
+        WHERE debt_id = ?
+        """, (debt_id,))
+
+        total_paid = cursor.fetchone()[0]
+        return total_paid
+    finally:
+        conn.close()
+
+def insert_debt_payment(debt_id, payment_amount, payment_date):
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO debt_payment_history (debt_id, payment_amount, payment_date) VALUES (?, ?, ?)
+        """, (debt_id, payment_amount, payment_date))
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+def update_debt_balance_after_payment(debt_id, profile_id, payment_amount) -> int:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE debts 
+        SET debt_balance = debt_balance - ?
+        WHERE debts.id = ? AND debts.profile_id = ?
+        """, (payment_amount, debt_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def record_debt_payment(profile_id, debt_id, payment_amount,payment_date):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT debt_balance
+            FROM debts
+            WHERE id = ? AND profile_id = ?
+        """, (debt_id, profile_id))
+
+        debt = cursor.fetchone()
+
+        if debt is None:
+            return 0
+
+        current_balance = debt[0]
+
+        if payment_amount <= 0:
+            return 0
+
+        if payment_amount > current_balance:
+            return 0
+
+        cursor.execute("""
+            INSERT INTO debt_payment_history(debt_id, payment_amount, payment_date) VALUES (?, ?, ?)
+        """, (debt_id, payment_amount, payment_date))
+
+        cursor.execute("""
+            UPDATE debts
+            SET debt_balance = debt_balance - ?
+            WHERE id = ? AND profile_id = ?
+        """, (payment_amount, debt_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+def create_savings_contributions():
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS savings_contributions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        savings_id INTEGER NOT NULL,
+        contribution_amount REAL NOT NULL,
+        contribution_date TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (savings_id) REFERENCES savings(id) ON DELETE CASCADE
+        );
+        """)
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def increase_current_savings(savings_id, profile_id, amount) -> int:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE savings
+        SET current_savings_amount = current_savings_amount + ?
+        WHERE savings.id = ? AND savings.profile_id = ?
+        """, (amount, savings_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def get_savings_contribution(savings_id, contribution_id) -> float:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT contribution_amount
+            FROM savings_contributions
+            WHERE savings_contributions.savings_id = ? AND savings_contributions.id = ?
+        """, (savings_id, contribution_id))
+
+        row = cursor.fetchone()
+
+        if row is None:
+            return 0
+
+        total = row[0]
+        return total
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def get_total_savings_contribution(savings_id) -> float:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT COALESCE(SUM(contribution_amount), 0)
+        FROM savings_contributions
+        WHERE savings_contributions.savings_id = ?
+        """, (savings_id,))
+
+        total = cursor.fetchone()[0]
+        return total
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def record_savings_contribution(profile_id, savings_id, contribution_amount, contribution_date) -> int:
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT planned_savings_amount
+        FROM savings
+        WHERE savings.profile_id = ? AND savings.id = ?
+        """, (profile_id, savings_id))
+
+        amt = cursor.fetchone()
+
+        if amt is None:
+            return 0
+
+        if contribution_amount <= 0:
+            return 0
+
+        cursor.execute("""
+        INSERT INTO savings_contributions(savings_id,contribution_amount,contribution_date) VALUES (?, ?, ?)
+        """, (savings_id, contribution_amount, contribution_date))
+
+        cursor.execute("""
+        UPDATE savings
+        SET current_savings_amount = current_savings_amount + ?
+        WHERE savings.id = ? AND savings.profile_id = ?
+        """, (contribution_amount, savings_id, profile_id))
+
+        rows_updated = cursor.rowcount
+        conn.commit()
+        return rows_updated
+
+    except Exception:
+        conn.rollback()
+        raise
+
     finally:
         conn.close()

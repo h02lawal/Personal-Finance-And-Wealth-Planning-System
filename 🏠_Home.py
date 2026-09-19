@@ -1,5 +1,5 @@
 import streamlit as st
-from src.database import create_debts_table, create_tables, create_savings_table, create_financial_profile, get_financial_profiles, get_financial_profile
+from src.database import create_debts_table, create_tables, create_savings_table, create_financial_profile, create_debt_payment_history, get_financial_profiles, get_financial_profile, create_savings_contributions
 
 st.set_page_config(
     page_title="Personal Finance Planner",
@@ -39,6 +39,8 @@ if "financial_profile" not in st.session_state:
 create_tables()
 create_debts_table()
 create_savings_table()
+create_debt_payment_history()
+create_savings_contributions()
 
 profiles = get_financial_profiles()
 st.subheader("Financial Profiles")
