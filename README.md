@@ -6,31 +6,31 @@ The **Personal Finance & Wealth Planning System** is a Streamlit-based financial
 
 The system allows users to manage financial profiles, analyze monthly budgets, manage multiple debts and savings goals, assess investment risk tolerance, and receive educational financial recommendations based on their financial information.
 
-**Version 3.0** expands the application's financial management capabilities by introducing full CRUD functionality for debts and savings goals, debt payment tracking, savings contribution tracking, automatic balance updates, and improved database transaction handling.
+**Version 4.0** builds on the persistent financial record management introduced in Version 3.0 and adds **Debt Snowball and Debt Avalanche repayment strategies**, including multi-debt payoff forecasting, optional recurring extra payments, and estimated total interest.
 
-The application uses **SQLite** for persistent storage, allowing financial information to remain available across sessions and enabling financial activities to be associated with individual financial profiles.
+The application uses **SQLite** for persistent financial records. Repayment forecasts run on temporary copies of debt information and **do not change saved balances or record actual payments**.
 
 ---
 
-## 🚀 Version 3.0
+## 🚀 Version 4.0 — Debt Repayment Strategies & Forecasting
 
-Version 3.0 focuses on improving **financial record management and transaction tracking**.
+Version 4.0 focuses on helping users explore **how different debt repayment priorities can affect their estimated debt-free timeline**.
 
 ### Major Improvements
 
-- Full CRUD functionality for financial profiles
-- Full CRUD functionality for debts
-- Full CRUD functionality for savings goals
-- Ability to record payments toward individual debts
-- Automatic debt balance updates after payments
-- Debt payment history storage
-- Ability to record contributions toward individual savings goals
-- Automatic savings balance updates after contributions
-- Savings contribution history storage
-- Transaction-safe database operations
-- Profile-scoped debt and savings management
-- Improved Streamlit session-state handling
-- Improved persistent financial data management
+- **Debt Avalanche** prioritization based on the highest annual interest rate among outstanding debts
+- **Debt Snowball** prioritization based on the smallest outstanding balance
+- Display of recommended debt repayment priorities in the Streamlit Debt Planner
+- Ability to enter an **extra monthly payment** for forecasting
+- Month-by-month simulation of interest charges and scheduled payments across multiple debts
+- Reallocation of recurring payment amounts when simulated debts are paid off
+- Application of unused payment amounts toward other outstanding debts within the simulated month
+- Estimated **months until debt-free** for the selected strategy
+- Estimated **total interest** across the simulated repayment period
+- Tracking of individual simulated debt payoff months in the calculation results
+- Separation of **hypothetical forecasts** from actual SQLite payment transactions
+
+> **Forecasting note:** The extra payment entered for a forecast is assumed to recur monthly. Forecast results are estimates based on simplified monthly interest and fixed payment assumptions.
 
 ---
 
@@ -51,7 +51,7 @@ The Budget Dashboard helps users understand their monthly income, expenses, cash
 
 ### 💳 Debt Planner
 
-The Debt Planner allows users to create and manage multiple debts associated with their financial profile.
+The Debt Planner allows users to create, manage, and analyze multiple debts associated with their financial profile.
 
 #### Supported Debt Types
 
@@ -62,17 +62,45 @@ The Debt Planner allows users to create and manage multiple debts associated wit
 - Mortgages
 - Other debt types
 
-#### Features
+#### Debt Management Features
 
 - Stores multiple debts for each financial profile
-- Records debt balances and interest rates
-- Estimates debt repayment timelines
+- Records debt balances, annual interest rates, and monthly payments
+- Estimates individual debt repayment timelines and interest
 - Provides debt management recommendations
-- Allows existing debts to be edited
-- Allows debts to be deleted
-- Allows payments to be recorded against individual debts
-- Automatically reduces the outstanding debt balance after a payment
-- Stores debt payment history for future analysis
+- Allows existing debts to be edited or deleted
+- Allows actual payments to be recorded against individual debts
+- Automatically reduces saved debt balances when actual payments are recorded
+- Stores and displays debt payment history
+- Provides credit utilization and relevant loan-to-value information
+
+#### 🏔️ Debt Avalanche Strategy
+
+The **Debt Avalanche** method prioritizes the outstanding debt with the **highest annual interest rate**. The Debt Planner displays a suggested priority order and can simulate a long-term repayment plan using that strategy.
+
+The approach generally aims to reduce the total interest paid, subject to the forecast's assumptions.
+
+#### ❄️ Debt Snowball Strategy
+
+The **Debt Snowball** method prioritizes the outstanding debt with the **smallest remaining balance**. The Debt Planner displays a suggested priority order and can simulate a long-term repayment plan using that strategy.
+
+The approach focuses on paying off smaller debts first and progressively redirecting their payment amounts toward remaining debts.
+
+#### 🔮 Multi-Debt Repayment Forecasting
+
+For either strategy, users can enter an optional additional monthly payment and run a forecast. The forecasting engine:
+
+1. Retrieves the debts saved for the selected financial profile.
+2. Copies debt balances, annual interest rates, and monthly payments into temporary Python data structures.
+3. Calculates monthly interest and applies scheduled payments to active debts.
+4. Allocates additional monthly funds and unused payment amounts according to the selected strategy.
+5. Transfers the recurring monthly payment allocation of completed debts to other active debts for subsequent months.
+6. Repeats the simulation until the debts are paid off or the forecast reaches its safety limit.
+7. Returns estimated months to payoff, total interest, and individual debt payoff-month information.
+
+The Streamlit interface currently displays the selected strategy's **estimated months until debt-free** and **estimated total interest**. Individual payoff months are available in the calculation results but are not yet shown in a dedicated timeline visualization.
+
+**Important:** Simulated payments are hypothetical. They do **not** update the `debts` table or create entries in `debt_payment_history`.
 
 ---
 
@@ -130,7 +158,7 @@ The Financial Advisor combines information collected throughout the application 
 
 ## 🏗️ System Architecture
 
-Version 3.0 extends the application's architecture to support financial transaction history.
+Version 4.0 retains the database relationships introduced in Version 3.0 and adds a **read-only forecasting workflow** in the application layer.
 
 ```text
 financial_profile
@@ -142,17 +170,39 @@ financial_profile
     └── savings_contributions
 ```
 
-The `financial_profile` table acts as the parent record for the user's financial information.
+The `financial_profile` table acts as the parent record for the user's financial information. Each profile can contain multiple debts and savings goals. Debt payment and savings contribution histories remain associated with their respective records.
 
-A financial profile can contain multiple debts and multiple savings goals.
+### Forecasting Workflow
 
-Each debt can contain multiple payment records, while each savings goal can contain multiple contribution records.
+```text
+SQLite: saved debts for selected profile
+                  │
+                  ▼
+        Temporary Python debt list
+                  │
+         ┌────────┴────────┐
+         ▼                 ▼
+   Debt Avalanche     Debt Snowball
+   (highest APR)     (lowest balance)
+         │                 │
+         └────────┬────────┘
+                  ▼
+      Monthly repayment simulation
+                  │
+                  ▼
+    Payoff months + total interest
+                  │
+                  ▼
+         Streamlit Debt Planner
+
+     No forecast writes to SQLite
+```
 
 ---
 
 ## 🗄️ Database Design
 
-Version 3.0 uses **SQLite** for persistent financial data storage.
+The application uses **SQLite** for persistent financial data storage.
 
 ### Financial Profile
 
@@ -160,9 +210,7 @@ The `financial_profile` table stores general financial, budget, and investment a
 
 ### Debts
 
-The `debts` table stores individual debts associated with a financial profile.
-
-Each financial profile can contain multiple debts.
+The `debts` table stores individual debts associated with a financial profile. Each financial profile can contain multiple debts.
 
 ```text
 financial_profile
@@ -174,11 +222,7 @@ financial_profile
 
 ### Debt Payment History
 
-The `debt_payment_history` table stores individual payments made toward debts.
-
-Each payment is associated with a specific debt.
-
-When a debt payment is recorded, the application:
+The `debt_payment_history` table stores actual payments made toward debts. When an actual payment is recorded, the application:
 
 1. Records the payment in `debt_payment_history`.
 2. Reduces the current outstanding debt balance.
@@ -192,27 +236,23 @@ debts
 debt_payment_history
 ```
 
+**Forecasted payments are not inserted into this table.**
+
 ### Savings
 
 The `savings` table stores individual savings goals associated with a financial profile.
-
-Each financial profile can contain multiple savings goals.
 
 ```text
 financial_profile
         │
         │ One-to-Many
         ▼
-     savings
+      savings
 ```
 
 ### Savings Contributions
 
-The `savings_contributions` table stores individual contributions made toward savings goals.
-
-Each contribution is associated with a specific savings goal.
-
-When a savings contribution is recorded, the application:
+The `savings_contributions` table stores actual contributions made toward savings goals. When a savings contribution is recorded, the application:
 
 1. Records the contribution in `savings_contributions`.
 2. Increases the current savings balance.
@@ -226,13 +266,13 @@ savings
 savings_contributions
 ```
 
-Foreign-key relationships and cascading deletes are used to help maintain consistency between related financial records.
+Foreign-key relationships and cascading deletes help maintain consistency between related financial records.
 
 ---
 
 ## 🔄 CRUD Functionality
 
-Version 3.0 expands the application's **Create, Read, Update, and Delete (CRUD)** functionality.
+Version 4.0 retains the **Create, Read, Update, and Delete (CRUD)** functionality introduced in Version 3.0.
 
 ### Financial Profiles
 
@@ -246,7 +286,8 @@ Users can:
 - **Read/View** saved debts
 - **Update/Edit** existing debts
 - **Delete** debts
-- Record debt payments
+- Record and review actual debt payments
+- Run hypothetical Snowball and Avalanche forecasts without changing saved balances
 
 ### Savings Goals
 
@@ -262,9 +303,9 @@ Users can:
 
 ## 🔐 Transaction Management
 
-Version 3.0 improves database consistency by using transactions for operations that require multiple related database changes.
+The application uses transactions for operations that require multiple related database changes.
 
-For example, recording a debt payment requires:
+For example, recording an **actual debt payment** requires:
 
 ```text
 INSERT debt payment history
@@ -284,15 +325,13 @@ UPDATE current savings balance
        COMMIT TRANSACTION
 ```
 
-These related operations are performed within a single database transaction so that they are **committed together** or **rolled back if an error occurs**.
-
-This helps prevent situations where a payment or contribution is recorded without the corresponding balance being updated.
+These related operations are committed together or rolled back if an error occurs. **Version 4 forecasting is separate from this transaction workflow** and only changes in-memory simulated debt records.
 
 ---
 
 ## 🧠 Financial Assessment
 
-Version 3.0 continues to use a **rule-based financial risk assessment and financial health score**.
+The application continues to use a **rule-based financial risk assessment and financial health score**.
 
 The financial assessment considers information such as:
 
@@ -351,19 +390,21 @@ Personal-Finance-Wealth-Planning-System/
 └── README.md
 ```
 
+The Version 4 debt forecasting calculations are implemented in `src/calculations.py`, while the interactive controls and results are integrated into `pages/Debt_Planner.py`. The database access functions remain in `src/database.py`.
+
 ---
 
 ## 📸 Screenshots
 
-Screenshots of the application can be found in the `images/` directory.
-
-The screenshots demonstrate different areas of the application, including:
+Screenshots of the application can be found in the `images/` directory, including examples of:
 
 - Budget planning
-- Debt management
+- Debt management and repayment strategies
 - Savings planning
 - Investment profile assessment
 - Financial advisor functionality
+
+*Update the screenshots directory as needed to reflect the Version 4 interface.*
 
 ---
 
@@ -401,13 +442,9 @@ The Streamlit application should then open in your web browser.
 
 ---
 
-## 🌟 Version 3.0 Highlights
+## 🌟 Version 4.0 Highlights
 
-Version 3.0 represents a transition from primarily performing financial calculations to supporting **persistent financial activity management**.
-
-Users can now modify existing financial records and record financial activities such as debt payments and savings contributions while maintaining updated balances in the database.
-
-### Version 3.0 introduces:
+Version 4.0 expands the Debt Planner from **recording and tracking debts** to **exploring possible repayment outcomes**.
 
 ```text
 Persistent Financial Profiles
@@ -416,7 +453,12 @@ Persistent Financial Profiles
             │
             ├── Debts
             │     ├── CRUD Operations
-            │     └── Payment Tracking
+            │     ├── Actual Payment Tracking
+            │     └── Repayment Forecasting
+            │           ├── Snowball Strategy
+            │           ├── Avalanche Strategy
+            │           ├── Extra Monthly Payments
+            │           └── Estimated Time & Interest
             │
             ├── Savings Goals
             │     ├── CRUD Operations
@@ -427,33 +469,45 @@ Persistent Financial Profiles
             └── Financial Advisor
 ```
 
-These improvements provide the foundation for future historical financial analysis, debt repayment strategies, financial trend visualization, and machine-learning-based financial assessment.
+The key distinction is that **actual payments change the saved financial records**, while **forecasts model potential future payments without changing those records**.
 
 ---
 
-## 🔮 Future Improvements
+## 🧪 Current Limitations
 
-Planned enhancements for future versions include:
+Version 4.0 introduces an initial repayment forecasting engine. The following limitations remain:
 
-- Displayable debt payment history
-- Displayable savings contribution history
-- Debt snowball repayment strategy
-- Debt avalanche repayment strategy
-- Debt strategy comparisons
-- Estimated debt payoff dates
+- Forecasts use simplified monthly interest calculations rather than lender-specific accrual rules.
+- Forecasts assume fixed interest rates and scheduled payments, apart from simulated payment reallocations.
+- Additional monthly payments are treated as recurring assumptions.
+- Comprehensive validation of edge cases and numerical accuracy is still planned.
+- Snowball and Avalanche results are currently shown through separate strategy actions rather than a dedicated comparison dashboard.
+- Individual payoff-month values are calculated but not yet visualized as a full timeline.
+- Forecasts have a maximum-month safeguard; some scenarios may not produce a completed payoff forecast.
+- Fees, changing minimum payments, promotional interest rates, and other lender-specific conditions are not fully modeled.
+
+---
+
+## 🔮 Future Improvements — Version 5 and Beyond
+
+Planned enhancements include:
+
+- Further testing and correction of repayment simulation edge cases
+- Side-by-side **Snowball vs. Avalanche** comparisons
+- Estimated interest savings between repayment strategies
+- Individual debt payoff timelines and visualizations
+- More detailed debt repayment charts and forecasts
+- Improved forecasting inputs and validation
 - Savings progress and status analysis
-- Historical financial snapshots
-- Financial performance trend charts
+- Historical financial snapshots and performance trends
 - Improved financial dashboards
-- Expanded AI Advisor capabilities
-- Machine-learning-based financial risk prediction
-- Explainable machine-learning predictions
-- Improved profile management
-- User authentication
+- Expanded Financial Advisor capabilities
+- Machine-learning-based financial risk prediction and explainability
+- Improved profile management and user authentication
 - Additional database normalization and validation
 
 ---
 
 ## ⚠️ Disclaimer
 
-This application is intended for **educational and informational purposes only** and should not be considered professional financial, investment, tax, or legal advice.
+This application is intended for **educational and informational purposes only** and should not be considered professional financial, investment, tax, or legal advice. Repayment forecasts are estimates and may differ from actual lender statements or repayment schedules.

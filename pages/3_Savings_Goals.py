@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date, timedelta
 from src.visualizations import create_savings_progress_chart
-from src.database import insert_savings, display_savings_table, delete_savings, update_savings, record_savings_contribution
+from src.database import insert_savings, display_savings_table, delete_savings, update_savings, record_savings_contribution, get_total_savings_contribution, get_savings_contribution
 
 st.set_page_config(
     page_title="Savings Goals",
@@ -98,7 +98,7 @@ if not fetched_savings:
     st.error("You currently have not stored any savings.")
 else:
     for saves in fetched_savings:
-        col1, col2, col3, col4 = st.columns([7,2,2,2])
+        col1, col2, col3, col4, col5 = st.columns([7,2,2,2,2])
         with col1:
             st.write(f"Target Savings: \\${saves['planned_savings_amount']:,.2f}, Current Savings: \\${saves['current_savings_amount']:,.2f}, Target Date: {saves['target_date']}, Monthly Contribution: \\${saves['monthly_contribution']:,.2f}")
 
@@ -120,6 +120,9 @@ else:
         with col4:
             if st.button("Contribute", key=f"contribute_savings_{saves['id']}"):
                 st.session_state.contribute_savings_id = saves['id']
+        with col5:
+            if st.button("Contribution History", key=f"contribute_history_{saves['id']}"):
+                st.session_state.contribute_history_id = saves['id']
 
         if st.session_state.get("editing_savings_id") == saves['id']:
             edit_savings_name = st.text_input("Enter savings name: ", value=saves['savings_name'], key=f"edit_savings_name_{saves['id']}")
@@ -158,4 +161,16 @@ else:
                     st.rerun()
                 else:
                     st.error("There was a problem. The savings contribution wasn't updated.")
+
+        if st.session_state.get("contribute_history_id") == saves['id']:
+            contributions = get_savings_contribution(saves["id"])
+
+            total_contribution = get_total_savings_contribution(saves["id"])
+            st.metric("Total Contribution", f"${total_contribution:,.2f}")
+
+            if not contributions:
+                st.info("No savings contributions found.")
+            else:
+                for con in contributions:
+                    st.write(f"On {con['contribution_date']}, ${con['contribution_amount']:,.2f} was contributed to the savings goal.")
 

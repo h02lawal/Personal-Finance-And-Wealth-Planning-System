@@ -4,6 +4,7 @@ DB_NAME = 'data/finance_app.db'
 
 def get_connection():
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -209,8 +210,59 @@ def get_depts_by_profile(profile_id:int):
     cursor.execute("""
                    SELECT *
                    FROM debts d 
-                       WHERE d.profile_id = ?
+                       WHERE d.profile_id = ? AND d.debt_balance > 0
                        ORDER BY d.created_at DESC
+                   """, (profile_id,))
+
+    debts = cursor.fetchall()
+    conn.close()
+
+    return debts
+
+def get_debt(profile_id:int, debt_id:int):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT *
+                   FROM debts d 
+                       WHERE d.profile_id = ? AND d.id = ? AND d.debt_balance > 0
+                       ORDER BY d.created_at DESC
+                   """, (profile_id,debt_id))
+
+    debts = cursor.fetchall()
+    conn.close()
+
+    return debts
+
+def snowball_payment(profile_id:int):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT *
+                   FROM debts d 
+                       WHERE d.profile_id = ? AND d.debt_balance > 0
+                       ORDER BY d.debt_balance ASC, d.annual_interest_rate DESC
+                   """, (profile_id,))
+
+    debts = cursor.fetchall()
+    conn.close()
+
+    return debts
+
+def avalanche_payment(profile_id:int):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT *
+                   FROM debts d 
+                       WHERE d.profile_id = ? AND d.debt_balance > 0
+                       ORDER BY d.annual_interest_rate DESC, d.debt_balance ASC
                    """, (profile_id,))
 
     debts = cursor.fetchall()
@@ -611,27 +663,20 @@ def increase_current_savings(savings_id, profile_id, amount) -> int:
     finally:
         conn.close()
 
-def get_savings_contribution(savings_id, contribution_id) -> float:
+def get_savings_contribution(savings_id) -> list:
     conn = get_connection()
 
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT contribution_amount
+            SELECT *
             FROM savings_contributions
-            WHERE savings_contributions.savings_id = ? AND savings_contributions.id = ?
-        """, (savings_id, contribution_id))
+            WHERE savings_contributions.savings_id = ?
+            ORDER BY contribution_date DESC
+        """, (savings_id,))
 
-        row = cursor.fetchone()
-
-        if row is None:
-            return 0
-
-        total = row[0]
-        return total
-    except Exception:
-        conn.rollback()
-        raise
+        row = cursor.fetchall()
+        return row
     finally:
         conn.close()
 

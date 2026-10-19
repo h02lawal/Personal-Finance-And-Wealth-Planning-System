@@ -1,8 +1,8 @@
 
 import streamlit as st
 from datetime import date
-from src.calculations import debt_information
-from src.database import insert_debt, get_depts_by_profile, delete_debt, update_debt, record_debt_payment
+from src.calculations import debt_information, payments_until_complete
+from src.database import insert_debt, get_depts_by_profile, delete_debt, update_debt, record_debt_payment, get_debt_payments, get_total_debt_payments, avalanche_payment, snowball_payment
 
 
 st.set_page_config(
@@ -218,7 +218,7 @@ if not debts:
     st.info("No debts have been saved yet for that Profile ID")
 else:
     for debt in debts:
-        col1, col2, col3, col4 = st.columns([5,2,2,2])
+        col1, col2, col3, col4, col5, col6 = st.columns([5,2,2,2,2,2])
 
         with col1:
             st.write(f"Debt: {debt['debt_name']}, Debt Balance: ${debt['debt_balance']:,.2f}")
@@ -236,6 +236,9 @@ else:
         with col4:
             if st.button("Record Payment", key=f"record_payment{debt['id']}"):
                 st.session_state.payment_debt_id = debt['id']
+        with col5:
+            if st.button("Payment History", key=f"debt_history{debt['id']}"):
+                st.session_state.debt_history_id = debt['id']
 
         if st.session_state.get("editing_debt_id") == debt["id"]:
             editing_debt_type = debt["debt_type"]
@@ -298,3 +301,70 @@ else:
                     st.rerun()
                 else:
                     st.error("Payment not accepted")
+
+        if st.session_state.get("debt_history_id") == debt["id"]:
+            debt_details = get_debt_payments(debt["id"])
+            total_debt_paid = get_total_debt_payments(debt["id"])
+
+            st.metric("Total Debt Paid is ", f"${total_debt_paid:,.2f}")
+
+            if debt_details:
+                for d in debt_details:
+                    st.write(f'Payment Amount : ${d["payment_amount"]:,.2f}, Payment Date : {d["payment_date"]}')
+            else:
+                st.info("No payments have been recorded for this debt")
+
+
+    extra_payment = st.number_input("Extra monthly payment for forecasting", min_value=0.0, value=0.0, step=10.0, key=f"extra_payment_{profile_id}")
+    st.write("Which repayment strategy do you want to use: ")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("Avalanche strategy prioritizes high interest debts")
+        if st.button("Avalanche priority payments", key=f"avalanche_priority_{profile_id}"):
+            avalanche = avalanche_payment(profile_id)
+            if avalanche:
+                priority_debt = avalanche[0]
+                if extra_payment > 0:
+                    st.success(f"Based on the Avalanche strategy, consider putting your extra ${extra_payment:,.2f} toward {priority_debt['debt_name']}.")
+                count = 1
+                for dd in avalanche:
+                    st.write(f"Priority {count} - Debt Name: {dd['debt_name']},  Debt Type: {dd['debt_type']},  Debt Balance: ${dd['debt_balance']:,.2f},  Annual Interest Rate: {dd['annual_interest_rate']:.2f}%")
+                    count += 1
+
+                result = payments_until_complete(profile_id, "avalanche", extra_payment)
+                if result == -3:
+                    st.info("There are no debts associated with this profile.")
+                elif result ==-1:
+                    st.warning("The repayment forecast could not be completed. Check whether your monthly payments are sufficient.")
+                else:
+                    st.success("Debt repayment forecast completed!")
+                    st.metric("Months Until Debt-Free", result["months_to_payoff"])
+                    st.metric("Estimated Total Interest", f"${result['total_interest']:,.2f}")
+            else:
+                st.info("There are no active debts for this profile.")
+
+    with col2:
+        st.write("Snowball strategy prioritizes low debt amounts")
+        if st.button("Snowball priority payments", key=f"snowball_priority_{profile_id}"):
+            snowball = snowball_payment(profile_id)
+            if snowball:
+                priority_debt = snowball[0]
+                if extra_payment > 0:
+                    st.success(f"Consider putting your extra ${extra_payment:,.2f} toward {priority_debt['debt_name']}.")
+                count = 1
+                for dd in snowball:
+                    st.write(f"Priority {count} - Debt Name: {dd['debt_name']},  Debt Type: {dd['debt_type']},  Debt Balance: ${dd['debt_balance']:,.2f},  Annual Interest Rate: {dd['annual_interest_rate']:.2f}%")
+                    count += 1
+
+                result = payments_until_complete(profile_id, "snowball", extra_payment)
+                if result == -3:
+                    st.info("There are no debts associated with this profile.")
+                elif result == -1:
+                    st.warning(
+                        "The repayment forecast could not be completed. Check whether your monthly payments are sufficient.")
+                else:
+                    st.success("Debt repayment forecast completed!")
+                    st.metric("Months Until Debt-Free", result["months_to_payoff"])
+                    st.metric("Estimated Total Interest", f"${result['total_interest']:,.2f}")
+            else:
+                st.info("There are no active debts for this profile.")
