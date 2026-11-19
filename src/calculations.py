@@ -158,17 +158,17 @@ def lowest_balance(debts):
 
 
 def payments_until_complete(profile_id: int, technique: str = "avalanche",extra_monthly_payment: float = 0):
-    debts = get_depts_by_profile(profile_id)
-    temp_debt_storage = []
-    months = 0
-    total_interest = 0
-    monthly_balances = []
-
     if technique not in ("avalanche", "snowball"):
         raise ValueError("Technique must be 'avalanche' or 'snowball'.")
 
     if extra_monthly_payment < 0:
         raise ValueError("Extra monthly payment cannot be negative.")
+
+    debts = get_depts_by_profile(profile_id)
+    temp_debt_storage = []
+    months = 0
+    total_interest = 0
+    monthly_balances = []
 
     if not debts:
         return -3
