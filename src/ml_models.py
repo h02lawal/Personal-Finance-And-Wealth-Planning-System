@@ -1,3 +1,35 @@
+
+from pathlib import Path
+
+import joblib
+import pandas as pd
+import streamlit as st
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODEL_PATH = PROJECT_ROOT / "models" / "financial_risk_model.joblib"
+
+
+@st.cache_resource
+def load_financial_risk_model():
+    return joblib.load(MODEL_PATH)
+
+
+def predict_six_month_shortfall(monthly_income, monthly_expenses, liquid_savings, total_debt):
+    model = load_financial_risk_model()
+
+    features = pd.DataFrame([{
+        "income": monthly_income,
+        "expense": monthly_expenses,
+        "savings": liquid_savings,
+        "debt": total_debt
+    }])
+
+    probability = float(model.predict_proba(features)[0, 1])
+    prediction = "Yes" if probability >= 0.5 else "No"
+
+    return prediction, probability
+
+
 def predict_financial_risk(savings_rate, debt_interest_rate, emergency_fund_months, debt_to_income, savings_goal_progress):
     risk_points = 0
 

@@ -162,6 +162,7 @@ def payments_until_complete(profile_id: int, technique: str = "avalanche",extra_
     temp_debt_storage = []
     months = 0
     total_interest = 0
+    monthly_balances = []
 
     if technique not in ("avalanche", "snowball"):
         raise ValueError("Technique must be 'avalanche' or 'snowball'.")
@@ -173,13 +174,15 @@ def payments_until_complete(profile_id: int, technique: str = "avalanche",extra_
         return -3
 
     for debt in debts:
-        temp_debt_storage.append({"id": debt["id"], "balance": float(debt["debt_balance"]), "annual_ir": float(debt["annual_interest_rate"]), "monthly_pay": float(debt["monthly_payment"]), "duration_till_paid": 0})
+        temp_debt_storage.append({"id": debt["id"],"debt_name": debt["debt_name"], "balance": float(debt["debt_balance"]), "annual_ir": float(debt["annual_interest_rate"]), "monthly_pay": float(debt["monthly_payment"]), "duration_till_paid": 0})
 
     def get_priority_id():
         if technique == "avalanche":
             return highest_interest(temp_debt_storage)
         else:
             return lowest_balance(temp_debt_storage)
+
+    monthly_balances = [{"month": 0, "total_balance": sum(debt["balance"] for debt in temp_debt_storage)}]
 
     while any(debt["balance"] > 0 for debt in temp_debt_storage):
         months += 1
@@ -228,5 +231,123 @@ def payments_until_complete(profile_id: int, technique: str = "avalanche",extra_
                     break
 
             completed_debt["monthly_pay"] = 0
+        monthly_balances.append({"month":months, "total_balance":sum(debt["balance"] for debt in temp_debt_storage)})
+
+    return {"months_to_payoff": months, "total_interest": total_interest, "debts": temp_debt_storage, "monthly_balances":monthly_balances}
+
+def simulate_debt_repayments(debts, technique, extra_monthly_payment):
+    temp_debt_storage = []
+    months = 0
+    total_interest = 0
+
+    if technique not in ("avalanche", "snowball"):
+        raise ValueError("Technique must be 'avalanche' or 'snowball'.")
+
+    if extra_monthly_payment < 0:
+        raise ValueError("Extra monthly payment cannot be negative.")
+
+    if not debts:
+        return -3
+
+    for debt in debts:
+        temp_debt_storage.append(
+            {"id": debt["id"], "balance": float(debt["debt_balance"]), "annual_ir": float(debt["annual_interest_rate"]),
+             "monthly_pay": float(debt["monthly_payment"]), "duration_till_paid": 0})
+
+    def get_priority_id():
+        if technique == "avalanche":
+            return highest_interest(temp_debt_storage)
+        else:
+            return lowest_balance(temp_debt_storage)
+
+    while any(debt["balance"] > 0 for debt in temp_debt_storage):
+        months += 1
+        if months > 1200:
+            return -1
+        current_month_excess = extra_monthly_payment
+        completed_debts = []
+
+        for debt in temp_debt_storage:
+            if debt["balance"] > 0:
+                bal, mon_int_pay, excess = calculate_one_month_debt(debt["balance"], debt["annual_ir"],
+                                                                    debt["monthly_pay"])
+                debt["balance"] = bal
+                total_interest += mon_int_pay
+                current_month_excess += excess
+
+                if debt["balance"] <= 0:
+                    debt["duration_till_paid"] = months
+                    completed_debts.append(debt)
+
+        while current_month_excess > 0:
+            priority_id = get_priority_id()
+            if priority_id == 0:
+                break
+
+            for debt in temp_debt_storage:
+                if debt["id"] == priority_id:
+                    payment_applied = min(current_month_excess, debt["balance"])
+                    debt["balance"] -= payment_applied
+                    current_month_excess -= payment_applied
+
+                    if debt["balance"] <= 0:
+                        debt["balance"] = 0
+                        debt["duration_till_paid"] = months
+                        completed_debts.append(debt)
+                    break
+
+        for completed_debt in completed_debts:
+            priority_id = get_priority_id()
+
+            if priority_id == 0:
+                break
+
+            for debt in temp_debt_storage:
+                if debt["id"] == priority_id:
+                    debt["monthly_pay"] += completed_debt["monthly_pay"]
+                    break
+
+            completed_debt["monthly_pay"] = 0
 
     return {"months_to_payoff": months, "total_interest": total_interest, "debts": temp_debt_storage}
+
+def payments_until_complete_seperate(profile_id, technique, extra_monthly_payments):
+    debts = get_depts_by_profile(profile_id)
+
+    return simulate_debt_repayments(debts, technique, extra_monthly_payments)
+
+def compare_repayment_strategies(profile_id, extra_monthly_payment=0):
+    strategy_a = payments_until_complete(profile_id, "avalanche", extra_monthly_payment)
+    strategy_s = payments_until_complete(profile_id, "snowball", extra_monthly_payment)
+
+    if (strategy_a == -3) or (strategy_s == -3):
+        return -3
+
+    if (strategy_a == -1) or (strategy_s == -1):
+        return -1
+
+    if not isinstance(strategy_a, dict) or not isinstance(strategy_s, dict):
+        raise TypeError("Unexpected repayment simulation result.")
+
+    strategy_s_months = strategy_s["months_to_payoff"]
+    strategy_s_total_interest = strategy_s["total_interest"]
+
+    strategy_a_months = strategy_a["months_to_payoff"]
+    strategy_a_total_interest = strategy_a["total_interest"]
+
+    if not isinstance(strategy_s_months, (int, float)):
+        raise TypeError("Invalid Snowball payoff duration.")
+
+    if not isinstance(strategy_s_total_interest, (int, float)):
+        raise TypeError("Invalid Snowball interest.")
+
+    if not isinstance(strategy_a_months, (int, float)):
+        raise TypeError("Invalid Avalanche payoff duration.")
+
+    if not isinstance(strategy_a_total_interest, (int, float)):
+        raise TypeError("Invalid Avalanche interest.")
+
+    interest_diff = strategy_s_total_interest - strategy_a_total_interest
+    months_difference = strategy_s_months - strategy_a_months
+
+    return {"snowball": strategy_s, "avalanche": strategy_a, "interest_saving":interest_diff, "months_difference":months_difference}

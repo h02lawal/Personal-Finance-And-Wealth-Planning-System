@@ -2,7 +2,7 @@ import streamlit as st
 from src.recommendations import get_financial_recommendation
 from src.database import get_financial_profile, get_depts_by_profile, display_savings_table
 from src.calculations import financial_health_score
-from src.ml_models import predict_financial_risk
+from src.ml_models import predict_financial_risk, predict_six_month_shortfall
 
 st.set_page_config(
     page_title="AI Advisor",
@@ -12,8 +12,6 @@ st.set_page_config(
 
 st.title("🤖 AI Financial Advisor")
 st.write("This advisor provides educational financial planning suggestions.")
-
-#profile = st.session_state.financial_profile
 
 profile_id = st.session_state.get("profile_id")
 if not isinstance(profile_id, int):
@@ -30,22 +28,22 @@ assert financial_profile is not None
 
 risk_score = int(financial_profile["risk_score"] or 0)
 monthly_income = float(financial_profile["monthly_income"] or 0.0)
-total_expenses = float(financial_profile["total_expenses"] or 0.0)
-remaining_balance = (monthly_income - total_expenses)
-savings_rate = (remaining_balance / monthly_income if monthly_income > 0 else 0.0)
-emergency_fund_months = max(remaining_balance, 0.0) / total_expenses if total_expenses > 0 else 0
 
-investor_profile = financial_profile["investor_profile"] or "Moderate" #profile.get("investor_profile", "Moderate")
+investor_profile = financial_profile["investor_profile"] or "Moderate"
 debts = get_depts_by_profile(profile_id)
 debt_balance = sum(float(debt["debt_balance"] or 0.0) for debt in debts)
 debt_interest_rate = max((float(debt["annual_interest_rate"] or 0.0) for debt in debts), default=0.0)
 total_monthly_debt_payments = sum(float(debt["monthly_payment"] or 0.0) for debt in debts)
+total_expenses = float(financial_profile["total_expenses"] or 0.0) + total_monthly_debt_payments
+remaining_balance = (monthly_income - total_expenses)
+savings_rate = (remaining_balance / monthly_income if monthly_income > 0 else 0.0)
 
 savings = display_savings_table(profile_id)
 total_current_savings = sum(float(saving["current_savings_amount"] or 0.0) for saving in savings)
 total_savings_targets = sum(float(saving["planned_savings_amount"] or 0.0) for saving in savings)
 total_monthly_contribution = sum(float(saving["monthly_contribution"] or 0.0) for saving in savings)
 number_of_savings_goals = len(savings)
+emergency_fund_months = total_current_savings / total_expenses if total_expenses > 0 else 0
 
 st.subheader('Financial Summary')
 
@@ -79,3 +77,20 @@ st.write(f"Financial Risk Assessment: {predict_financial_risk(savings_rate, debt
 
 fin_h_s = financial_health_score(savings_rate, debt_to_income, emergency_fund_months, remaining_balance, savings_goal_progress, total_monthly_contribution, total_savings_targets)
 st.metric("Financial Health Score", f"{fin_h_s}/100")
+
+st.divider()
+st.subheader("Machine Learning Financial Risk Assessment")
+shortfall_prediction, shortfall_probability = predict_six_month_shortfall(monthly_income, total_expenses, total_current_savings, debt_balance)
+
+col1, col2 =  st.columns(2)
+with col1:
+    st.metric("Six-month Shortfall Probability", f"{shortfall_probability:.2%}")
+with col2:
+    st.metric("Predicted financial shortfall", shortfall_prediction)
+
+if shortfall_prediction == "Yes":
+    st.warning("The model predicts a potential financial shortfall within the next six months.")
+else:
+    st.success("The model predicts no financial shortfall within the next six months.")
+
+st.caption("This prediction is generated using a Logistic Regression model trained on synthetic financial data. Results are experimental and have not been validated against real-world financial outcomes.")

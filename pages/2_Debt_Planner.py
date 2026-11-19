@@ -1,7 +1,8 @@
 
 import streamlit as st
+from pandas import DataFrame, merge
 from datetime import date
-from src.calculations import debt_information, payments_until_complete
+from src.calculations import debt_information, payments_until_complete, compare_repayment_strategies
 from src.database import insert_debt, get_depts_by_profile, delete_debt, update_debt, record_debt_payment, get_debt_payments, get_total_debt_payments, avalanche_payment, snowball_payment
 
 
@@ -15,13 +16,20 @@ st.title("💰 Debt Planner")
 st.write("Enter the Information Below: ")
 
 debt_name = st.text_input("Enter the name of the debt")
+assert debt_name is not None
+
 debt_type = st.selectbox("What type of debt",
                          ["Credit Card", "Car Loan", "Student Loan", "Personal Loan", "Mortgage", "Other"])
+assert debt_type is not None
 
 debt_balance = st.number_input("Enter the balance of the debt", min_value=0.0)
+assert debt_balance is not None
+
 annual_interest_rate = st.number_input("Annual Interest Rate: ",min_value=0.0, max_value=100.0, value=19.99)
+assert annual_interest_rate is not None
+
 monthly_payment = st.number_input("Monthly Payment: ",min_value=0.0)
-monthly_interest_rate = annual_interest_rate/100/12
+assert monthly_payment is not None
 
 credit_limit: float|None = None
 credit_utilization: float |None=None
@@ -34,18 +42,35 @@ repayment_plan: str | None = None
 description: str | None = None
 
 if debt_type == "Credit Card":
-    credit_limit = float(st.number_input("Credit limit", min_value=1.0, step=100.0))
-    minimum_payment = float(st.number_input("Required minimum payment", min_value=0.0, step=10.0))
+    credit_limit_input = st.number_input("Credit limit", min_value=1.0, step=100.0)
+    assert credit_limit_input is not None
+    credit_limit = float(credit_limit_input)
+
+    minimum_payment_input = st.number_input("Required minimum payment", min_value=0.0, step=10.0)
+    assert minimum_payment_input is not None
+    minimum_payment = float(minimum_payment_input)
+
     assert credit_limit is not None
     credit_utilization = (debt_balance / credit_limit * 100)
 
 elif debt_type == "Car Loan":
-    vehicle_value = float(st.number_input("Estimated vehicle value", min_value=0.0, step=100.0))
-    remaining_term_months = int(st.number_input("Remaining term in months", min_value=1, step=1))
+    vehicle_value_input = st.number_input("Estimated vehicle value", min_value=0.0, step=100.0)
+    assert vehicle_value_input is not None
+    vehicle_value = float(vehicle_value_input)
+
+    remaining_term_months_input = st.number_input("Remaining term in months", min_value=1, step=1)
+    assert remaining_term_months_input is not None
+    remaining_term_months = int(remaining_term_months_input)
+
 
 elif debt_type == "Mortgage":
-    property_value = float(st.number_input("Estimated property value", min_value=0.0, step=1000.0))
-    remaining_amortization_years = int(st.number_input("Remaining amortization in years", min_value=1, step=1))
+    property_value_input = st.number_input("Estimated property value", min_value=0.0, step=1000.0)
+    assert property_value_input is not None
+    property_value = float(property_value_input)
+
+    remaining_amortization_years_input = st.number_input("Remaining amortization in years", min_value=1, step=1)
+    assert remaining_amortization_years_input is not None
+    remaining_amortization_years = int(remaining_amortization_years_input)
 
 elif debt_type == "Student Loan":
     repayment_plan = st.selectbox("Repayment plan", ["Standard", "Extended", "Income-Based", "Interest-Free", "Other"])
@@ -120,7 +145,7 @@ if debt["debt_type"] == "Credit Card" and credit_utilization is not None:
         st.warning(f"Credit utilization is high at {credit_utilization:.1f}%, consider reducing the balance.")
 if debt["debt_type"] == "Credit Card" and minimum_payment is not None:
     if minimum_payment > 0 and monthly_payment < minimum_payment:
-        st.error(f"Your monthly payment of {monthly_payment:.2f}is too low. It does not cover the required minimum payment of {minimum_payment}")
+        st.error(f"Your monthly payment of ${monthly_payment:.2f} is too low. It does not cover the required minimum payment of {minimum_payment}")
 if debt_type == "Credit Card" and credit_limit is not None and 0 < credit_limit < debt_balance:
     st.error("The entered balance exceeds the credit limit. Verify the balance or credit limit.")
 
@@ -133,7 +158,7 @@ if debt["debt_type"] == "Car Loan" and vehicle_value is not None and remaining_t
     loan_to_value = (debt_balance/vehicle_value * 100 if vehicle_value > 0 else None)
 
     if loan_to_value is not None and loan_to_value > 100:
-        st.warning(f"The loan-to-value ratio is {loan_to_value:.1f}%."
+        st.warning(f"The loan-to-value ratio is {loan_to_value:.1f}%. "
                    "You currently owe more than the estimated vehicle value."
                    )
     if months_to_payoff is not None and remaining_term_months is not None and months_to_payoff > remaining_term_months:
@@ -213,6 +238,7 @@ else:
 
 debts = get_depts_by_profile(profile_id)
 
+st.divider()
 st.subheader("Saved Debts")
 if not debts:
     st.info("No debts have been saved yet for that Profile ID")
@@ -243,9 +269,17 @@ else:
         if st.session_state.get("editing_debt_id") == debt["id"]:
             editing_debt_type = debt["debt_type"]
             editing_debt_name = st.text_input("Enter new debt name", value=debt["debt_name"], key=f"editing_debt_name_{debt['id']}")
+            assert editing_debt_name is not None
+
             editing_debt_balance = st.number_input("Enter new debt balance", min_value=0.0,value=float(debt["debt_balance"] or 0), key=f"editing_debt_balance_{debt['id']}")
+            assert editing_debt_balance is not None
+
             editing_annual_interest_rate = st.number_input("Enter new interest rate", min_value=0.0, max_value=100.0,value=float(debt["annual_interest_rate"] or 0), key=f"editing_annual_interest_rate_{debt['id']}")
+            assert editing_annual_interest_rate is not None
+
             editing_monthly_payment = st.number_input("Enter new monthly payment", min_value=0.0,value=float(debt["monthly_payment"] or 0), key=f"editing_monthly_payment_{debt['id']}")
+            assert editing_monthly_payment is not None
+
             editing_monthly_interest_rate = editing_annual_interest_rate / 100 / 12
 
             editing_credit_limit = None
@@ -258,15 +292,34 @@ else:
             editing_description = None
 
             if editing_debt_type == "Credit Card":
-                editing_credit_limit = float(st.number_input("Enter new Credit Limit", min_value=1.0, step=100.0, value=float(debt["credit_limit"] or 1), key=f"editing_credit_limit_{debt['id']}"))
-                editing_minimum_payment = float(st.number_input("Enter new minimum payment", min_value=0.0, step=10.0, value=float(debt["minimum_payment"] or 0), key=f"editing_minimum_payment_{debt['id']}"))
+                editing_credit_limit_input = st.number_input("Enter new Credit Limit", min_value=1.0, step=100.0, value=float(debt["credit_limit"] or 1), key=f"editing_credit_limit_{debt['id']}")
+                assert editing_credit_limit_input is not None
+                editing_credit_limit = float(editing_credit_limit_input)
+
+
+                editing_minimum_payment_input = st.number_input("Enter new minimum payment", min_value=0.0, step=10.0, value=float(debt["minimum_payment"] or 0), key=f"editing_minimum_payment_{debt['id']}")
+                assert editing_minimum_payment_input is not None
+                editing_minimum_payment = float(editing_minimum_payment_input)
+
                 editing_credit_utilization = (editing_debt_balance / editing_credit_limit * 100)
             elif editing_debt_type == "Car Loan":
-                editing_vehicle_value = float(st.number_input("Enter new vehicle value", min_value=0.0, step=100.0, value = float(debt["vehicle_value"] or 0), key=f"editing_vehicle_value_{debt['id']}"))
-                editing_remaining_term_months = int(st.number_input("Enter new remaining term months", min_value=1, step=1, value=int(debt["remaining_term_months"] or 1), key=f"editing_remaining_term_months_{debt['id']}"))
+                editing_vehicle_value_input = st.number_input("Enter new vehicle value", min_value=0.0, step=100.0, value = float(debt["vehicle_value"] or 0), key=f"editing_vehicle_value_{debt['id']}")
+                assert editing_vehicle_value_input is not None
+                editing_vehicle_value = float(editing_vehicle_value_input)
+
+                editing_remaining_term_months_input = st.number_input("Enter new remaining term months", min_value=1, step=1, value=int(debt["remaining_term_months"] or 1), key=f"editing_remaining_term_months_{debt['id']}")
+                assert editing_remaining_term_months_input is not None
+                editing_remaining_term_months = int(editing_remaining_term_months_input)
+
             elif editing_debt_type == "Mortgage":
-                editing_property_value = float(st.number_input("Enter new estimated property value", min_value=0.0, step=1000.0, value=float(debt["property_value"] or 0.0), key=f"editing_property_value_{debt['id']}"))
-                editing_remaining_amortization_years = int(st.number_input("Enter new remaining amortization in years", min_value=1, step=1, value=int(debt["remaining_amortization_years"] or 1), key=f"editing_remaining_amortization_years_{debt['id']}"))
+                editing_property_value_input = st.number_input("Enter new estimated property value", min_value=0.0, step=1000.0, value=float(debt["property_value"] or 0.0), key=f"editing_property_value_{debt['id']}")
+                assert editing_property_value_input is not None
+                editing_property_value = float(editing_property_value_input)
+
+                editing_remaining_amortization_years_input = st.number_input("Enter new remaining amortization in years", min_value=1, step=1, value=int(debt["remaining_amortization_years"] or 1), key=f"editing_remaining_amortization_years_{debt['id']}")
+                assert editing_remaining_amortization_years_input is not None
+                editing_remaining_amortization_years = int(editing_remaining_amortization_years_input)
+
             elif editing_debt_type == "Student Loan":
                 repayment_options = ["Standard", "Extended", "Income-Based", "Interest-Free", "Other"]
                 editing_repayment_plan = st.selectbox("Enter new repayment plan", repayment_options, index=repayment_options.index(debt["repayment_plan"] or "Standard"), key=f"editing_repayment_plan_{debt['id']}")
@@ -278,29 +331,40 @@ else:
                 editing_description = st.text_input("Enter a new description here", value=debt["description"] or "", key=f"editing_description_{debt['id']}")
 
             if st.button("Save Changes", key=f"save_debt_{debt['id']}"):
-                num_rows_updated = update_debt(profile_id, debt["id"], editing_debt_type, editing_debt_name, editing_debt_balance, editing_annual_interest_rate, editing_monthly_payment, editing_credit_limit, editing_minimum_payment, editing_vehicle_value, editing_remaining_term_months, editing_property_value, editing_remaining_amortization_years, editing_repayment_plan, editing_description)
-                if num_rows_updated == 1:
-                    st.success("Debt updated successfully.")
-                    st.session_state.editing_debt_id = None
-                    st.rerun()
+                if not editing_debt_name.strip():
+                    st.error("Debt name cannot be empty.")
+                elif editing_debt_balance <= 0:
+                    st.error("Debt balance must be greater than zero.")
+                elif editing_monthly_payment <= 0:
+                    st.error("Monthly payment must be greater than zero.")
                 else:
-                    st.error("Something went wrong. The debt could not be updated.")
+                    num_rows_updated = update_debt(profile_id, debt["id"], editing_debt_type, editing_debt_name, editing_debt_balance, editing_annual_interest_rate, editing_monthly_payment, editing_credit_limit, editing_minimum_payment, editing_vehicle_value, editing_remaining_term_months, editing_property_value, editing_remaining_amortization_years, editing_repayment_plan, editing_description)
+                    if num_rows_updated == 1:
+                        st.success("Debt updated successfully.")
+                        st.session_state.editing_debt_id = None
+                        st.rerun()
+                    else:
+                        st.error("Something went wrong. The debt could not be updated.")
 
         if st.session_state.get("payment_debt_id") == debt['id']:
             payment_amount = st.number_input("Enter the amount you'll like to pay", min_value=0.01, max_value=float(debt['debt_balance']), key=f"payment_amount_{debt['id']}")
             payment_date = st.date_input("Enter the payment date", value=date.today(), key=f"payment_date_{debt['id']}" )
 
             if st.button("Submit Payment", key=f"submit_payment_{debt['id']}"):
-                payment_date_string = payment_date.isoformat()
 
-                rows_updated = record_debt_payment(profile_id, debt['id'], payment_amount, payment_date_string)
-
-                if rows_updated == 1:
-                    st.write("Debt updated successfully.")
-                    st.session_state.payment_debt_id = None
-                    st.rerun()
+                if not isinstance(payment_date, date):
+                    st.error("Please select a valid date.")
+                elif payment_amount is None:
+                    st.error("Please enter a payment amount.")
                 else:
-                    st.error("Payment not accepted")
+                    rows_updated = record_debt_payment(profile_id, debt['id'], payment_amount, payment_date.isoformat())
+
+                    if rows_updated == 1:
+                        st.write("Debt updated successfully.")
+                        st.session_state.payment_debt_id = None
+                        st.rerun()
+                    else:
+                        st.error("Payment not accepted")
 
         if st.session_state.get("debt_history_id") == debt["id"]:
             debt_details = get_debt_payments(debt["id"])
@@ -314,8 +378,10 @@ else:
             else:
                 st.info("No payments have been recorded for this debt")
 
-
+    st.divider()
     extra_payment = st.number_input("Extra monthly payment for forecasting", min_value=0.0, value=0.0, step=10.0, key=f"extra_payment_{profile_id}")
+    assert extra_payment is not None
+
     st.write("Which repayment strategy do you want to use: ")
     col1, col2 = st.columns(2)
     with col1:
@@ -368,3 +434,86 @@ else:
                     st.metric("Estimated Total Interest", f"${result['total_interest']:,.2f}")
             else:
                 st.info("There are no active debts for this profile.")
+
+    st.divider()
+    st.subheader("Snowball vs Avalanche Comparison")
+    if st.button("Strategy Comparison", key=f"strategy_comparison_{profile_id}"):
+        forecast_result = compare_repayment_strategies(profile_id, extra_payment)
+
+        if forecast_result == -3:
+            st.info("There are no active debts for this profile.")
+        elif forecast_result == -1:
+            st.info("The repayment comparison could not be completed. Check whether your monthly payments are sufficient.")
+        else:
+            forecast_int_saving = forecast_result["interest_saving"]
+            forecast_months_diff = forecast_result["months_difference"]
+
+            col9, col10 = st.columns(2)
+            with col9:
+                if forecast_int_saving > 0:
+                    st.metric("Interest Savings with Avalanche", f"${forecast_int_saving:,.2f}")
+                elif forecast_int_saving < 0:
+                    st.metric("Interest Savings with Snowball", f"${abs(forecast_int_saving):,.2f}")
+                else:
+                    st.metric("Interest Difference", "$0.00")
+                    st.info("Both strategies produce the same estimated total interest.")
+            with col10:
+                if forecast_months_diff > 0:
+                    st.metric("Months Saved with Avalanche", forecast_months_diff)
+                elif forecast_months_diff < 0:
+                    st.metric("Months Saved with Snowball", abs(forecast_months_diff))
+                else:
+                    st.metric("Duration Difference", "0 months")
+                    st.info("Both strategies have the same estimated debt-free duration.")
+
+            snowball_fc = forecast_result["snowball"]
+            avalanche_fc = forecast_result["avalanche"]
+
+            avalanche_lookup = {debt["id"]: debt["duration_till_paid"] for debt in avalanche_fc["debts"]}
+
+            col11,col12,col13 = st.columns(3)
+            with col11:
+                st.write("**Debts**")
+                st.divider()
+
+
+
+            with col12:
+                st.write("**Snowball Payoff (Months)**")
+                st.divider()
+
+
+            with col13:
+                st.write("**Avalanche Payoff (Months)**")
+                st.divider()
+
+            for debt in snowball_fc["debts"]:
+                with col11:
+                    st.write(debt["debt_name"])
+                with col12:
+                    st.write(debt["duration_till_paid"])
+                with col13:
+                    st.write(avalanche_lookup.get(debt["id"], "N/A"))
+
+
+    st.divider()
+    st.subheader("Snowball vs Avalanche Plot Comparison")
+    if st.button("Show Plot Comparison", key=f"plot_comparison_{profile_id}"):
+        forecast_result = compare_repayment_strategies(profile_id, extra_payment)
+
+        if forecast_result == -3:
+            st.info("There are no active debts for this profile.")
+        elif forecast_result == -1:
+            st.warning("The repayment forecast could not be completed.")
+        else:
+            snowball_balances = forecast_result["snowball"]["monthly_balances"]
+            avalanche_balances = forecast_result["avalanche"]["monthly_balances"]
+
+            snowball_df = DataFrame(snowball_balances)
+            avalanche_df = DataFrame(avalanche_balances)
+
+            comparison_df = merge(snowball_df, avalanche_df, on="month", how="outer", sort=True, suffixes=("_snowball", "_avalanche")).fillna(0)
+
+            st.subheader("Debt Repayment Progress")
+            st.line_chart(comparison_df, x="month", y=["total_balance_snowball", "total_balance_avalanche"], x_label="Month", y_label="Outstanding Debt ($)")
+

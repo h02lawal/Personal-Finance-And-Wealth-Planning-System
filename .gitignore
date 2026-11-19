@@ -1,18 +1,29 @@
-# Python
-__pycache__/
-*.pyc
 
-# IDE
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# PyCharm
 .idea/
-.vscode/
 
 # macOS
 .DS_Store
 
-# Local database
-data/finance_app.db
-
-# Environment
+# Environment variables and secrets
 .env
-venv/
-.venv/
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.log
